@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "target_path": "",
+  "auto_start": false,
+  "auto_close_enabled": false,
+  "auto_close_seconds": 60,
+  "window_geometry": "920x430+120+120",
+  "password_required": false,
+  "password_hash": "",
+  "password_salt": "",
+  "ui": {}
+}
