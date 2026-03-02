@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import stat
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -68,9 +69,10 @@ class CleanerService:
 
         for entry in target.iterdir():
             try:
-                fd, dd = self._delete_entry(entry)
+                fd, dd, err = self._delete_entry(entry)
                 files_deleted += fd
                 dirs_deleted += dd
+                errors += err
                 total = files_deleted + dirs_deleted
                 if total % 100 == 0 and total > 0:
                     status_cb(f"Progreso: {files_deleted} archivos, {dirs_deleted} carpetas eliminadas.")
@@ -91,32 +93,72 @@ class CleanerService:
             elapsed_seconds=elapsed,
         )
 
-    def _delete_entry(self, path: Path) -> tuple[int, int]:
+    def _delete_entry(self, path: Path) -> tuple[int, int, int]:
         if path.is_symlink():
-            path.unlink(missing_ok=False)
-            return 1, 0
+            if self._unlink_with_retry(path):
+                return 1, 0, 0
+            return 0, 0, 1
 
         if path.is_file():
-            path.unlink(missing_ok=False)
-            return 1, 0
+            if self._unlink_with_retry(path):
+                return 1, 0, 0
+            return 0, 0, 1
 
         if not path.is_dir():
-            path.unlink(missing_ok=False)
-            return 1, 0
+            if self._unlink_with_retry(path):
+                return 1, 0, 0
+            return 0, 0, 1
 
         files_deleted = 0
         dirs_deleted = 0
+        errors = 0
 
-        with os.scandir(path) as iterator:
-            for item in iterator:
-                child = Path(item.path)
-                fd, dd = self._delete_entry(child)
-                files_deleted += fd
-                dirs_deleted += dd
+        try:
+            with os.scandir(path) as iterator:
+                for item in iterator:
+                    child = Path(item.path)
+                    fd, dd, err = self._delete_entry(child)
+                    files_deleted += fd
+                    dirs_deleted += dd
+                    errors += err
+        except OSError:
+            return files_deleted, dirs_deleted, errors + 1
 
-        path.rmdir()
-        dirs_deleted += 1
-        return files_deleted, dirs_deleted
+        if self._rmdir_with_retry(path):
+            dirs_deleted += 1
+        else:
+            errors += 1
+
+        return files_deleted, dirs_deleted, errors
+
+    @staticmethod
+    def _make_writable(path: Path) -> None:
+        current_mode = path.stat(follow_symlinks=False).st_mode
+        path.chmod(current_mode | stat.S_IWUSR)
+
+    def _unlink_with_retry(self, path: Path) -> bool:
+        try:
+            path.unlink(missing_ok=False)
+            return True
+        except OSError:
+            try:
+                self._make_writable(path)
+                path.unlink(missing_ok=False)
+                return True
+            except OSError:
+                return False
+
+    def _rmdir_with_retry(self, path: Path) -> bool:
+        try:
+            path.rmdir()
+            return True
+        except OSError:
+            try:
+                self._make_writable(path)
+                path.rmdir()
+                return True
+            except OSError:
+                return False
 
     @staticmethod
     def _is_root_path(path: Path) -> bool:
