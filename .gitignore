@@ -1,5 +1,33 @@
-__pycache__/
-*.pyc
+# Build artifacts
+*.exe
 build/
 dist/
+.pyi_build/
 *.spec
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+env/
+
+# Application runtime files
+log.txt
+config.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
