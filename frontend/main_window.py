@@ -30,7 +30,7 @@ class MainWindow:
         self._set_app_icon()
         self.root.title(f"{APP_NAME} v{VERSION}")
         self.root.geometry(self.config.window_geometry)
-        self.root.minsize(1080, 720)
+        self.root.minsize(980, 680)
         self.root.protocol("WM_DELETE_WINDOW", self.on_exit)
 
         self._queue: queue.Queue[dict[str, Any]] = queue.Queue()
@@ -66,6 +66,7 @@ class MainWindow:
         self._refresh_target_summary()
         self._refresh_auto_close_summary()
         self._refresh_security_summary()
+        self._fit_window_to_content()
 
         self.root.bind("<Configure>", self._on_window_configure)
         self._process_queue()
@@ -200,6 +201,18 @@ class MainWindow:
         except tk.TclError:
             return
 
+    def _fit_window_to_content(self) -> None:
+        self.root.update_idletasks()
+        available_width = max(self.root.minsize()[0], self.root.winfo_screenwidth() - 40)
+        available_height = max(self.root.minsize()[1], self.root.winfo_screenheight() - 80)
+        current_width = self.root.winfo_width()
+        current_height = self.root.winfo_height()
+        target_width = min(max(current_width, self.root.winfo_reqwidth()), available_width)
+        target_height = min(max(current_height, self.root.winfo_reqheight()), available_height)
+
+        if target_width != current_width or target_height != current_height:
+            self.root.geometry(f"{target_width}x{target_height}")
+
     def _build_menu(self) -> None:
         menu_bar = tk.Menu(self.root)
 
@@ -218,17 +231,14 @@ class MainWindow:
 
     def _build_ui(self) -> None:
         outer = tk.Frame(self.root, bg=self.colors["bg"])
-        outer.pack(fill="both", expand=True, padx=24, pady=24)
-        outer.grid_columnconfigure(0, weight=2)
+        outer.pack(fill="both", expand=True, padx=12, pady=18)
+        outer.grid_columnconfigure(0, weight=0, minsize=380)
         outer.grid_columnconfigure(1, weight=1)
-        outer.grid_columnconfigure(2, weight=1)
-        outer.grid_rowconfigure(2, weight=1)
+        outer.grid_rowconfigure(1, weight=1)
 
-        self._build_hero(outer).grid(row=0, column=0, columnspan=3, sticky="ew")
-        self._build_path_card(outer).grid(row=1, column=0, sticky="nsew", pady=(18, 16), padx=(0, 16))
-        self._build_automation_card(outer).grid(row=1, column=1, sticky="nsew", pady=(18, 16), padx=(0, 16))
-        self._build_security_card(outer).grid(row=1, column=2, sticky="nsew", pady=(18, 16))
-        self._build_activity_card(outer).grid(row=2, column=0, columnspan=3, sticky="nsew")
+        self._build_hero(outer).grid(row=0, column=0, columnspan=2, sticky="ew")
+        self._build_settings_card(outer).grid(row=1, column=0, sticky="nsew", pady=(18, 0), padx=(0, 8))
+        self._build_activity_card(outer).grid(row=1, column=1, sticky="nsew", pady=(18, 0))
 
     def _build_card(self, parent: tk.Widget) -> tk.Frame:
         return tk.Frame(
@@ -270,7 +280,7 @@ class MainWindow:
         hero.grid_columnconfigure(1, weight=0)
 
         left = tk.Frame(hero, bg=self.colors["hero"])
-        left.grid(row=0, column=0, sticky="nsew", padx=26, pady=26)
+        left.grid(row=0, column=0, sticky="nsew", padx=20, pady=16)
 
         tk.Label(
             left,
@@ -279,49 +289,40 @@ class MainWindow:
             fg=self.colors["accent"],
             font=("Segoe UI Semibold", 9),
             padx=10,
-            pady=6,
+            pady=5,
         ).grid(row=0, column=0, sticky="w")
         tk.Label(
             left,
-            text="Panel de limpieza seguro y con presencia visual",
+            text="Limpieza segura, ahora en una distribución más cómoda",
             bg=self.colors["hero"],
             fg=self.colors["text"],
-            font=("Bahnschrift SemiBold", 24),
+            font=("Bahnschrift SemiBold", 20),
             justify="left",
-        ).grid(row=1, column=0, sticky="w", pady=(14, 8))
+        ).grid(row=1, column=0, sticky="w", pady=(10, 6))
         tk.Label(
             left,
             text=(
-                "Selecciona una carpeta, protege la ejecución con contraseña si hace falta y "
-                "ejecuta la limpieza con un panel más cercano a un dashboard que a una ventana clásica."
+                "Destino, automatización, seguridad, métricas y bitácora accesibles desde la vista inicial."
             ),
             bg=self.colors["hero"],
             fg=self.colors["muted"],
-            font=("Segoe UI", 10),
+            font=("Segoe UI", 9),
             justify="left",
-            wraplength=560,
+            wraplength=580,
         ).grid(row=2, column=0, sticky="w")
-        tk.Label(
-            left,
-            text="Autocierre, validaciones de seguridad, trazabilidad en log y licencia Apache 2.0.",
-            bg=self.colors["hero"],
-            fg=self.colors["text"],
-            font=("Segoe UI Semibold", 9),
-            justify="left",
-        ).grid(row=3, column=0, sticky="w", pady=(16, 0))
 
         right = tk.Frame(hero, bg=self.colors["hero"])
-        right.grid(row=0, column=1, sticky="ne", padx=26, pady=22)
+        right.grid(row=0, column=1, sticky="ne", padx=20, pady=16)
 
-        art = tk.Canvas(right, width=220, height=110, bg=self.colors["hero"], highlightthickness=0, bd=0)
+        art = tk.Canvas(right, width=150, height=78, bg=self.colors["hero"], highlightthickness=0, bd=0)
         art.grid(row=0, column=0, sticky="e")
-        art.create_oval(118, 8, 208, 98, fill="#1d4d72", outline="")
-        art.create_oval(78, 30, 162, 114, fill="#10324f", outline="")
-        art.create_oval(24, 12, 112, 100, fill="#1a6f8f", outline="")
-        art.create_text(110, 55, text="AX", fill=self.colors["text"], font=("Bahnschrift SemiBold", 24))
+        art.create_oval(84, 4, 146, 66, fill="#1d4d72", outline="")
+        art.create_oval(54, 20, 114, 80, fill="#10324f", outline="")
+        art.create_oval(14, 8, 74, 68, fill="#1a6f8f", outline="")
+        art.create_text(78, 40, text="AX", fill=self.colors["text"], font=("Bahnschrift SemiBold", 18))
 
         actions = tk.Frame(right, bg=self.colors["hero"])
-        actions.grid(row=1, column=0, sticky="e", pady=(10, 0))
+        actions.grid(row=1, column=0, sticky="e", pady=(8, 0))
 
         self.start_button = ttk.Button(actions, text="Iniciar limpieza", style="Primary.TButton", command=self.start_cleanup)
         self.start_button.grid(row=0, column=0, padx=(0, 8))
@@ -334,97 +335,84 @@ class MainWindow:
         self.exit_button.grid(row=0, column=2)
         return hero
 
-    def _build_path_card(self, parent: tk.Widget) -> tk.Frame:
+    def _build_settings_card(self, parent: tk.Widget) -> tk.Frame:
         card = self._build_card(parent)
         card.grid_columnconfigure(0, weight=1)
 
         tk.Label(
             card,
-            text="Destino de limpieza",
+            text="Controles",
             bg=self.colors["surface"],
             fg=self.colors["text"],
             font=("Bahnschrift SemiBold", 16),
-        ).grid(row=0, column=0, sticky="w", padx=20, pady=(18, 4))
+        ).grid(row=0, column=0, sticky="w", padx=14, pady=(16, 4))
+
+        path_box = tk.Frame(card, bg=self.colors["surface_alt"], highlightthickness=1, highlightbackground=self.colors["border"])
+        path_box.grid(row=1, column=0, sticky="ew", padx=14, pady=(10, 12))
+        path_box.grid_columnconfigure(0, weight=1)
+
         tk.Label(
-            card,
-            text="La carpeta raíz se conserva. Solo se elimina su contenido interno.",
-            bg=self.colors["surface"],
-            fg=self.colors["muted"],
-            font=("Segoe UI", 10),
-            justify="left",
-        ).grid(row=1, column=0, sticky="w", padx=20)
-        tk.Label(
-            card,
-            text="Carpeta a limpiar",
-            bg=self.colors["surface"],
+            path_box,
+            text="Destino de limpieza",
+            bg=self.colors["surface_alt"],
             fg=self.colors["text"],
             font=("Segoe UI Semibold", 10),
-        ).grid(row=2, column=0, sticky="w", padx=20, pady=(18, 6))
+        ).grid(row=0, column=0, sticky="w", padx=14, pady=(12, 4))
 
-        row = tk.Frame(card, bg=self.colors["surface"])
-        row.grid(row=3, column=0, sticky="ew", padx=20)
+        row = tk.Frame(path_box, bg=self.colors["surface_alt"])
+        row.grid(row=1, column=0, sticky="ew", padx=14)
         row.grid_columnconfigure(0, weight=1)
 
         self.path_entry = ttk.Entry(row, textvariable=self.target_var, style="Surface.TEntry")
         self.path_entry.grid(row=0, column=0, sticky="ew")
         self.browse_button = ttk.Button(row, text="Examinar", style="Secondary.TButton", command=self.select_folder)
-        self.browse_button.grid(row=0, column=1, padx=(10, 0))
+        self.browse_button.grid(row=0, column=1, padx=(8, 0))
 
         tk.Label(
-            card,
+            path_box,
             textvariable=self.path_summary_var,
-            bg=self.colors["surface"],
+            bg=self.colors["surface_alt"],
             fg=self.colors["accent"],
             font=("Segoe UI Semibold", 9),
             justify="left",
-            wraplength=480,
-        ).grid(row=4, column=0, sticky="w", padx=20, pady=(12, 0))
+            wraplength=320,
+        ).grid(row=2, column=0, sticky="w", padx=14, pady=(10, 12))
 
-        note_box = tk.Frame(card, bg=self.colors["surface_alt"], highlightthickness=1, highlightbackground=self.colors["border"])
-        note_box.grid(row=5, column=0, sticky="ew", padx=20, pady=(18, 20))
-        note_box.grid_columnconfigure(0, weight=1)
+        controls = tk.Frame(card, bg=self.colors["surface"])
+        controls.grid(row=2, column=0, sticky="nsew", padx=14, pady=(0, 12))
+        controls.grid_columnconfigure(0, weight=1)
+        controls.grid_columnconfigure(1, weight=1)
+
+        auto_box = tk.Frame(controls, bg=self.colors["surface_alt"], highlightthickness=1, highlightbackground=self.colors["border"])
+        auto_box.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
+        auto_box.grid_columnconfigure(0, weight=1)
+
+        security_box = tk.Frame(controls, bg=self.colors["surface_alt"], highlightthickness=1, highlightbackground=self.colors["border"])
+        security_box.grid(row=0, column=1, sticky="nsew", padx=(8, 0))
+        security_box.grid_columnconfigure(0, weight=1)
+
+        self._populate_automation_box(auto_box)
+        self._populate_security_box(security_box)
 
         tk.Label(
-            note_box,
-            text="Buenas prácticas incluidas",
-            bg=self.colors["surface_alt"],
-            fg=self.colors["warn"],
-            font=("Segoe UI Semibold", 10),
-        ).grid(row=0, column=0, sticky="w", padx=14, pady=(12, 4))
-        tk.Label(
-            note_box,
-            text=(
-                "Validación contra rutas críticas, manejo de archivos de solo lectura, "
-                "guardado automático de configuración y log rotativo con timestamp."
-            ),
-            bg=self.colors["surface_alt"],
+            card,
+            text="Validación de rutas críticas, guardado automático, log rotativo y password con hash.",
+            bg=self.colors["surface"],
             fg=self.colors["muted"],
             font=("Segoe UI", 9),
             justify="left",
-            wraplength=500,
-        ).grid(row=1, column=0, sticky="w", padx=14, pady=(0, 12))
+            wraplength=320,
+        ).grid(row=3, column=0, sticky="w", padx=14, pady=(0, 16))
         return card
 
-    def _build_automation_card(self, parent: tk.Widget) -> tk.Frame:
-        card = self._build_card(parent)
-        card.grid_columnconfigure(0, weight=1)
-
+    def _populate_automation_box(self, card: tk.Widget) -> None:
         tk.Label(
             card,
             text="Automatización",
-            bg=self.colors["surface"],
+            bg=self.colors["surface_alt"],
             fg=self.colors["text"],
-            font=("Bahnschrift SemiBold", 16),
-        ).grid(row=0, column=0, sticky="w", padx=20, pady=(18, 4))
-        tk.Label(
-            card,
-            text="Configura el arranque y el cierre sin depender de cuadros modales.",
-            bg=self.colors["surface"],
-            fg=self.colors["muted"],
-            font=("Segoe UI", 10),
-            justify="left",
-            wraplength=250,
-        ).grid(row=1, column=0, sticky="w", padx=20)
+            font=("Segoe UI Semibold", 10),
+        ).grid(row=0, column=0, sticky="w", padx=14, pady=(12, 4))
 
         self.auto_start_check = ttk.Checkbutton(
             card,
@@ -433,7 +421,7 @@ class MainWindow:
             style="Surface.TCheckbutton",
             command=self._schedule_save,
         )
-        self.auto_start_check.grid(row=2, column=0, sticky="w", padx=20, pady=(18, 8))
+        self.auto_start_check.grid(row=1, column=0, sticky="w", padx=14, pady=(10, 6))
 
         self.auto_close_check = ttk.Checkbutton(
             card,
@@ -442,15 +430,15 @@ class MainWindow:
             style="Surface.TCheckbutton",
             command=self._on_auto_close_toggle,
         )
-        self.auto_close_check.grid(row=3, column=0, sticky="w", padx=20, pady=8)
+        self.auto_close_check.grid(row=2, column=0, sticky="w", padx=14, pady=6)
 
         tk.Label(
             card,
             text="Segundos para autocierre",
-            bg=self.colors["surface"],
+            bg=self.colors["surface_alt"],
             fg=self.colors["text"],
-            font=("Segoe UI Semibold", 10),
-        ).grid(row=4, column=0, sticky="w", padx=20, pady=(16, 6))
+            font=("Segoe UI Semibold", 9),
+        ).grid(row=3, column=0, sticky="w", padx=14, pady=(8, 4))
         self.auto_close_spin = ttk.Spinbox(
             card,
             from_=5,
@@ -460,39 +448,26 @@ class MainWindow:
             style="Surface.TSpinbox",
             command=self._on_auto_close_seconds_changed,
         )
-        self.auto_close_spin.grid(row=5, column=0, sticky="w", padx=20)
+        self.auto_close_spin.grid(row=4, column=0, sticky="w", padx=14)
 
         tk.Label(
             card,
             textvariable=self.auto_close_summary_var,
-            bg=self.colors["surface"],
+            bg=self.colors["surface_alt"],
             fg=self.colors["accent"],
             font=("Segoe UI Semibold", 9),
             justify="left",
-            wraplength=250,
-        ).grid(row=6, column=0, sticky="w", padx=20, pady=(12, 20))
-        return card
+            wraplength=150,
+        ).grid(row=5, column=0, sticky="w", padx=14, pady=(8, 12))
 
-    def _build_security_card(self, parent: tk.Widget) -> tk.Frame:
-        card = self._build_card(parent)
-        card.grid_columnconfigure(0, weight=1)
-
+    def _populate_security_box(self, card: tk.Widget) -> None:
         tk.Label(
             card,
             text="Seguridad y acceso",
-            bg=self.colors["surface"],
+            bg=self.colors["surface_alt"],
             fg=self.colors["text"],
-            font=("Bahnschrift SemiBold", 16),
-        ).grid(row=0, column=0, sticky="w", padx=20, pady=(18, 4))
-        tk.Label(
-            card,
-            text="Protege la limpieza con una clave hash y usa atajos estilo Windows.",
-            bg=self.colors["surface"],
-            fg=self.colors["muted"],
-            font=("Segoe UI", 10),
-            justify="left",
-            wraplength=250,
-        ).grid(row=1, column=0, sticky="w", padx=20)
+            font=("Segoe UI Semibold", 10),
+        ).grid(row=0, column=0, sticky="w", padx=14, pady=(12, 4))
 
         self.password_required_check = ttk.Checkbutton(
             card,
@@ -501,10 +476,10 @@ class MainWindow:
             style="Surface.TCheckbutton",
             command=self._schedule_save,
         )
-        self.password_required_check.grid(row=2, column=0, sticky="w", padx=20, pady=(18, 8))
+        self.password_required_check.grid(row=1, column=0, sticky="w", padx=14, pady=(10, 6))
 
-        entry_row = tk.Frame(card, bg=self.colors["surface"])
-        entry_row.grid(row=3, column=0, sticky="ew", padx=20)
+        entry_row = tk.Frame(card, bg=self.colors["surface_alt"])
+        entry_row.grid(row=2, column=0, sticky="ew", padx=14)
         entry_row.grid_columnconfigure(0, weight=1)
 
         self.password_entry = ttk.Entry(entry_row, textvariable=self.password_var, show="*", style="Surface.TEntry")
@@ -518,40 +493,32 @@ class MainWindow:
         )
         self.show_password_btn.grid(row=0, column=1, padx=(8, 0))
 
+        button_row = tk.Frame(card, bg=self.colors["surface_alt"])
+        button_row.grid(row=3, column=0, sticky="w", padx=14, pady=(8, 6))
+
         self.save_password_btn = ttk.Button(
-            card,
+            button_row,
             text="Guardar password",
             style="Secondary.TButton",
             command=self.save_password_hash,
         )
-        self.save_password_btn.grid(row=4, column=0, sticky="w", padx=20, pady=(12, 10))
+        self.save_password_btn.grid(row=0, column=0, sticky="w")
+        ttk.Button(button_row, text="About", style="Ghost.TButton", command=self.show_about_dialog).grid(
+            row=0,
+            column=1,
+            sticky="w",
+            padx=(8, 0),
+        )
 
         tk.Label(
             card,
             textvariable=self.security_summary_var,
-            bg=self.colors["surface"],
+            bg=self.colors["surface_alt"],
             fg=self.colors["accent"],
             font=("Segoe UI Semibold", 9),
             justify="left",
-            wraplength=250,
-        ).grid(row=5, column=0, sticky="w", padx=20)
-        tk.Label(
-            card,
-            text="Atajos: Ctrl+O seleccionar, F5 limpiar, Ctrl+G guardar clave, Ctrl+Q salir, F1 ayuda.",
-            bg=self.colors["surface"],
-            fg=self.colors["muted"],
-            font=("Segoe UI", 9),
-            justify="left",
-            wraplength=250,
-        ).grid(row=6, column=0, sticky="w", padx=20, pady=(16, 8))
-        ttk.Button(card, text="About", style="Ghost.TButton", command=self.show_about_dialog).grid(
-            row=7,
-            column=0,
-            sticky="w",
-            padx=20,
-            pady=(0, 20),
-        )
-        return card
+            wraplength=150,
+        ).grid(row=4, column=0, sticky="w", padx=14, pady=(0, 12))
 
     def _build_activity_card(self, parent: tk.Widget) -> tk.Frame:
         card = self._build_card(parent)
@@ -559,7 +526,7 @@ class MainWindow:
         card.grid_rowconfigure(4, weight=1)
 
         top = tk.Frame(card, bg=self.colors["surface"])
-        top.grid(row=0, column=0, sticky="ew", padx=20, pady=(18, 6))
+        top.grid(row=0, column=0, sticky="ew", padx=10, pady=(18, 6))
         top.grid_columnconfigure(0, weight=1)
 
         tk.Label(
@@ -586,13 +553,13 @@ class MainWindow:
             fg=self.colors["text"],
             font=("Segoe UI Semibold", 10),
             justify="left",
-            wraplength=960,
-        ).grid(row=1, column=0, sticky="ew", padx=20)
+            wraplength=620,
+        ).grid(row=1, column=0, sticky="ew", padx=10)
         self.progress = ttk.Progressbar(card, mode="indeterminate", style="App.Horizontal.TProgressbar")
-        self.progress.grid(row=2, column=0, sticky="ew", padx=20, pady=(14, 14))
+        self.progress.grid(row=2, column=0, sticky="ew", padx=10, pady=(14, 14))
 
         metrics = tk.Frame(card, bg=self.colors["surface"])
-        metrics.grid(row=3, column=0, sticky="ew", padx=20)
+        metrics.grid(row=3, column=0, sticky="ew", padx=10)
         for column in range(4):
             metrics.grid_columnconfigure(column, weight=1)
 
@@ -621,7 +588,7 @@ class MainWindow:
         )
 
         log_frame = tk.Frame(card, bg=self.colors["input"], highlightthickness=1, highlightbackground=self.colors["border"])
-        log_frame.grid(row=4, column=0, sticky="nsew", padx=20, pady=(18, 20))
+        log_frame.grid(row=4, column=0, sticky="nsew", padx=10, pady=(18, 16))
         log_frame.grid_columnconfigure(0, weight=1)
         log_frame.grid_rowconfigure(0, weight=1)
 
