@@ -11,8 +11,8 @@ from typing import Any
 from backend.paths import config_path
 from backend.version import VERSION
 
-GEOMETRY_PATTERN = re.compile(r"^\d{3,5}x\d{3,5}\+\d{1,5}\+\d{1,5}$")
-DEFAULT_GEOMETRY = "920x430+120+120"
+GEOMETRY_PATTERN = re.compile(r"^\d{3,5}x\d{3,5}[+-]\d{1,5}[+-]\d{1,5}$")
+DEFAULT_GEOMETRY = "1180x760+120+80"
 
 
 @dataclass

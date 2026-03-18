@@ -1,35 +1,31 @@
-# LimpiarAxess v0.1.0
+# LimpiarAxess v0.2.0
 
-Aplicación de escritorio en Python para limpiar de forma recursiva el contenido de una carpeta seleccionada, con GUI y configuración persistente.
+Aplicación de escritorio en Python para vaciar de forma segura el contenido de una carpeta, manteniendo la carpeta raíz, con una interfaz renovada tipo dashboard, validaciones defensivas y empaquetado para Windows.
 
-## Funcionalidades
+## Qué hace
 
-- **Borrado recursivo robusto** del contenido de carpeta objetivo (mantiene la carpeta raíz).
-- Manejo de archivos/carpetas de solo lectura con reintento automático.
-- Validaciones de seguridad para evitar rutas críticas.
-- Barra de estado informativa (sin messagebox para el flujo operativo).
-- Log con timestamp en `log.txt`.
-- Auto inicio del proceso al abrir la app.
-- Autocierre configurable con countdown visible en la barra de estado.
-- Password opcional para ejecutar limpieza (almacenado como hash PBKDF2 + salt).
-- Guardado automático de cambios en `config.json`.
-- Recuerdo de posición/tamaño de la ventana.
-- Menú `About`.
-- Atajos de teclado estilo Windows.
+- Elimina de forma recursiva archivos y subcarpetas dentro del destino seleccionado.
+- Mantiene intacta la carpeta principal para evitar borrados más agresivos de lo esperado.
+- Reintenta el borrado de archivos de solo lectura.
+- Bloquea rutas críticas como la raíz del disco, el HOME del usuario o la carpeta de la propia app.
+- Permite proteger la ejecución con password almacenado como hash PBKDF2 + salt.
+- Guarda configuración de ventana y preferencias de uso automáticamente.
+- Registra actividad en `log.txt`.
 
-## Atajos
+## Requisitos
 
-- `Ctrl+O`: seleccionar carpeta.
-- `F5` o `Alt+S`: iniciar limpieza.
-- `Ctrl+G`: guardar password.
-- `F1`: abrir About.
-- `Ctrl+Q` o `Alt+X`: salir.
+- Windows 10/11
+- Python 3.11 o superior para ejecutar desde código fuente
+- Dependencias de runtime: ninguna externa, solo librería estándar
+- Dependencia de build: `PyInstaller` definida en `requirements-build.txt`
 
-## Ejecutar
+## Ejecutar en desarrollo
 
 ```powershell
 python main.py
 ```
+
+En el primer arranque se genera `config.json` automáticamente a partir de los valores por defecto del código. El archivo `config.example.json` se conserva como plantilla documentada para el repositorio.
 
 ## Compilar
 
@@ -37,32 +33,53 @@ python main.py
 .\build.ps1
 ```
 
-Genera el ejecutable `LimpiarAxess.exe` en la raíz del proyecto usando `--windowed` y el icono local `limpiar.ico`.
+El build genera `LimpiarAxess.exe` en la misma carpeta raíz donde está `main.py`, usando `limpiar.ico` y metadatos de versión para el ejecutable de Windows.
 
-## Versionamiento (Semantic Versioning)
+## Versionado y releases
 
-La versión actual se mantiene sincronizada en:
+El proyecto usa Semantic Versioning (`vX.Y.Z`):
+
+- `patch`: correcciones compatibles
+- `minor`: nuevas funcionalidades compatibles
+- `major`: cambios incompatibles
+
+La versión debe coincidir entre:
+
 - `backend/version.py`
-- `config.json`
-- Tags de Git
-- Releases de GitHub
+- `config.example.json`
+- `pyproject.toml`
+- `README.md`
+- Tag de GitHub `vX.Y.Z`
+- Título/About de la app
+- Metadatos del `.exe`
 
-### Incrementar versión
+Flujo recomendado para publicar cada commit con su propia versión:
 
 ```powershell
-# Corrección de bugs (0.1.0 → 0.1.1)
-python .\scripts\bump_version.py patch
-
-# Nueva funcionalidad compatible (0.1.0 → 0.2.0)
-python .\scripts\bump_version.py minor
-
-# Cambios incompatibles (0.1.0 → 1.0.0)
-python .\scripts\bump_version.py major
+.\scripts\release.ps1 -Bump minor -Message "feat: moderniza la GUI y alinea releases"
 ```
+
+Ese script:
+
+1. Incrementa la versión en todos los archivos sincronizados.
+2. Ejecuta pruebas.
+3. Recompila el `.exe` en la raíz.
+4. Crea el commit.
+5. Crea el tag `vX.Y.Z`.
+6. Hace push de `main` y del tag.
 
 ## CI/CD
 
-Cada push a `main` ejecuta automáticamente:
-1. Build del ejecutable en Windows
-2. Creación de release con tag `vX.Y.Z`
-3. Publicación del `.exe` como asset del release
+- `CI`: valida pruebas en cada push o pull request contra `main`.
+- `Release`: al recibir un tag `vX.Y.Z`, recompila en Windows y publica el ejecutable como asset del release de GitHub.
+
+## Estructura
+
+- `frontend/`: interfaz gráfica
+- `backend/`: lógica de limpieza, seguridad, rutas y configuración
+- `scripts/`: automatización de versionado, release y build metadata
+- `tests/`: pruebas unitarias y de sincronización de versión
+
+## Licencia
+
+Distribuido bajo Apache License 2.0. Ver [`LICENSE`](LICENSE).

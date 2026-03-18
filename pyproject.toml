@@ -1,0 +1,18 @@
+[project]
+name = "limpiaraxess"
+version = "0.2.0"
+description = "Aplicación de escritorio para limpiar de forma segura el contenido de una carpeta."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache License 2.0" }
+authors = [
+  { name = "Synyster Rick" }
+]
+keywords = ["cleanup", "desktop", "tkinter", "windows"]
+classifiers = [
+  "License :: OSI Approved :: Apache Software License",
+  "Operating System :: Microsoft :: Windows",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only"
+]
+dependencies = []

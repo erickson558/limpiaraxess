@@ -1,0 +1,2 @@
+# Runtime dependencies
+# La aplicación usa únicamente la librería estándar de Python en ejecución.
