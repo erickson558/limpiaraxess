@@ -26,6 +26,8 @@ class AppConfig:
     password_required: bool = False
     password_hash: str = ""
     password_salt: str = ""
+    # Idioma de la interfaz: 'es' (español, predeterminado) o 'en' (inglés)
+    language: str = "es"
     ui: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -39,6 +41,7 @@ class AppConfig:
             "password_required": self.password_required,
             "password_hash": self.password_hash,
             "password_salt": self.password_salt,
+            "language": self.language,
             "ui": deepcopy(self.ui),
         }
 
@@ -71,6 +74,9 @@ class ConfigManager:
             cfg.password_hash = str(loaded.get("password_hash", ""))
             cfg.password_salt = str(loaded.get("password_salt", ""))
             cfg.ui = loaded.get("ui", {}) if isinstance(loaded.get("ui", {}), dict) else {}
+            # Carga el idioma guardado; valida que sea un valor conocido
+            raw_lang = str(loaded.get("language", "es"))
+            cfg.language = raw_lang if raw_lang in ("es", "en") else "es"
             cfg.version = VERSION
 
             self._config = cfg
