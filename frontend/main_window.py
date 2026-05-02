@@ -46,7 +46,7 @@ class MainWindow:
         self._worker_thread: threading.Thread | None = None
         self._is_running = False
         self._show_password = False        # True cuando el campo de password es visible
-        self._restart_requested = False    # True si se pidió reinicio por cambio de idioma
+        self.restart_requested = False     # True si se pidió reinicio por cambio de idioma
         self._base_status = t("app_ready")
         self._configure_job: str | None = None
         self._save_job: str | None = None
@@ -1087,8 +1087,8 @@ class MainWindow:
         """Abre el enlace de donaciones (PayPal) en el navegador predeterminado del sistema."""
         try:
             webbrowser.open_new_tab(DONATE_URL)
-        except Exception:  # noqa: BLE001
-            pass  # Si no hay navegador disponible, simplemente no hace nada
+        except (webbrowser.Error, OSError):
+            pass  # Sin navegador disponible; se ignora silenciosamente
 
     def _change_language(self, lang: str) -> None:
         """Cambia el idioma activo, guarda la preferencia y reinicia la ventana."""
@@ -1097,7 +1097,7 @@ class MainWindow:
 
         set_language(lang)
         self.config_manager.update(language=lang)  # Persiste antes de destruir
-        self._restart_requested = True
+        self.restart_requested = True
         self._cancel_pending_jobs()
         self.root.destroy()
 
@@ -1111,5 +1111,5 @@ def run() -> None:
     while True:
         app = MainWindow()
         app.run()
-        if not app._restart_requested:
+        if not app.restart_requested:
             break
