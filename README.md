@@ -1,4 +1,4 @@
-# LimpiarAxess v0.2.1
+# LimpiarAxess v0.3.0
 
 Aplicación de escritorio en Python para vaciar de forma segura el contenido de una carpeta, manteniendo la carpeta raíz, con una interfaz renovada tipo dashboard, validaciones defensivas y empaquetado para Windows.
 

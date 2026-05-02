@@ -4,18 +4,23 @@ import datetime as dt
 import queue
 import threading
 import tkinter as tk
+import webbrowser  # Para abrir el enlace de donaciones en el navegador predeterminado
 from pathlib import Path
 from tkinter import filedialog, ttk
 from typing import Any
 
 from backend.cleaner_service import CleanResult, CleanerService
 from backend.config_manager import ConfigManager
+from backend.i18n import get_language, set_language, t  # Sistema de traducciones ES/EN
 from backend.logger_service import build_logger
 from backend.paths import get_runtime_dir
 from backend.security import hash_password, verify_password
 from backend.version import VERSION
 
 APP_NAME = "LimpiarAxess"
+
+# URL del botón de donaciones — PayPal
+DONATE_URL = "https://www.paypal.com/donate/?hosted_button_id=ZABFRXC2P3JQN"
 
 
 class MainWindow:
@@ -24,6 +29,9 @@ class MainWindow:
         self.config = self.config_manager.get()
         self.logger = build_logger()
         self.cleaner = CleanerService()
+
+        # Activa el idioma guardado antes de construir la UI
+        set_language(self.config.language)
 
         self.root = tk.Tk()
         self._configure_theme()
@@ -37,8 +45,9 @@ class MainWindow:
         self._queue_job: str | None = None
         self._worker_thread: threading.Thread | None = None
         self._is_running = False
-        self._show_password = False
-        self._base_status = "Aplicación lista."
+        self._show_password = False        # True cuando el campo de password es visible
+        self.restart_requested = False     # True si se pidió reinicio por cambio de idioma
+        self._base_status = t("app_ready")
         self._configure_job: str | None = None
         self._save_job: str | None = None
         self._countdown_job: str | None = None
@@ -71,13 +80,13 @@ class MainWindow:
         self.root.bind("<Configure>", self._on_window_configure)
         self._process_queue()
         self._sync_countdown_state(force_reset=True)
-        self._set_status("Configuración cargada.")
+        self._set_status(t("config_loaded"))
 
         if self.auto_start_var.get():
             self.root.after(700, self.start_cleanup)
 
     def run(self) -> None:
-        self.logger.info("Aplicación iniciada. Versión %s", VERSION)
+        self.logger.info(t("app_started"), VERSION)
         self.root.mainloop()
 
     def _configure_theme(self) -> None:
@@ -176,6 +185,19 @@ class MainWindow:
             "Ghost.TButton",
             background=[("pressed", self.colors["surface_alt"]), ("active", self.colors["surface_alt"])],
         )
+        # Botón de donación: fondo ámbar para destacarlo visualmente
+        self.style.configure(
+            "Donate.TButton",
+            background="#f5a623",
+            foreground="#1a0f00",
+            borderwidth=0,
+            padding=(14, 10),
+            font=("Segoe UI Semibold", 10),
+        )
+        self.style.map(
+            "Donate.TButton",
+            background=[("pressed", "#e09515"), ("active", "#e09515")],
+        )
         self.style.configure(
             "App.Horizontal.TProgressbar",
             troughcolor=self.colors["input"],
@@ -214,18 +236,36 @@ class MainWindow:
             self.root.geometry(f"{target_width}x{target_height}")
 
     def _build_menu(self) -> None:
+        """Construye la barra de menú con Archivo, Idioma y Ayuda."""
         menu_bar = tk.Menu(self.root)
 
+        # Menú Archivo
         file_menu = tk.Menu(menu_bar, tearoff=False)
-        file_menu.add_command(label="Iniciar limpieza", accelerator="F5", command=self.start_cleanup)
-        file_menu.add_command(label="Seleccionar carpeta", accelerator="Ctrl+O", command=self.select_folder)
+        file_menu.add_command(label=t("menu_start_cleanup"), accelerator="F5", command=self.start_cleanup)
+        file_menu.add_command(label=t("menu_select_folder"), accelerator="Ctrl+O", command=self.select_folder)
         file_menu.add_separator()
-        file_menu.add_command(label="Salir", accelerator="Ctrl+Q", command=self.on_exit)
-        menu_bar.add_cascade(label="Archivo", menu=file_menu)
+        file_menu.add_command(label=t("menu_exit"), accelerator="Ctrl+Q", command=self.on_exit)
+        menu_bar.add_cascade(label=t("menu_file"), menu=file_menu)
 
+        # Menú Idioma — permite cambiar entre Español e Inglés
+        lang_menu = tk.Menu(menu_bar, tearoff=False)
+        lang_menu.add_command(
+            label=("\u2713 " if get_language() == "es" else "  ") + "Español",
+            command=lambda: self._change_language("es"),
+        )
+        lang_menu.add_command(
+            label=("\u2713 " if get_language() == "en" else "  ") + "English",
+            command=lambda: self._change_language("en"),
+        )
+        menu_bar.add_cascade(label=t("menu_language"), menu=lang_menu)
+
+        # Menú Ayuda
         help_menu = tk.Menu(menu_bar, tearoff=False)
-        help_menu.add_command(label="About", accelerator="F1", command=self.show_about_dialog)
-        menu_bar.add_cascade(label="Ayuda", menu=help_menu)
+        help_menu.add_command(label=t("menu_about"), accelerator="F1", command=self.show_about_dialog)
+        help_menu.add_separator()
+        # Acceso rápido al enlace de donaciones desde el menú
+        help_menu.add_command(label=t("btn_donate"), command=self.open_donate_url)
+        menu_bar.add_cascade(label=t("menu_help"), menu=help_menu)
 
         self.root.config(menu=menu_bar)
 
@@ -293,7 +333,7 @@ class MainWindow:
         ).grid(row=0, column=0, sticky="w")
         tk.Label(
             left,
-            text="Limpieza segura, ahora en una distribución más cómoda",
+            text=t("hero_subtitle"),
             bg=self.colors["hero"],
             fg=self.colors["text"],
             font=("Bahnschrift SemiBold", 20),
@@ -301,9 +341,7 @@ class MainWindow:
         ).grid(row=1, column=0, sticky="w", pady=(10, 6))
         tk.Label(
             left,
-            text=(
-                "Destino, automatización, seguridad, métricas y bitácora accesibles desde la vista inicial."
-            ),
+            text=t("hero_description"),
             bg=self.colors["hero"],
             fg=self.colors["muted"],
             font=("Segoe UI", 9),
@@ -324,15 +362,22 @@ class MainWindow:
         actions = tk.Frame(right, bg=self.colors["hero"])
         actions.grid(row=1, column=0, sticky="e", pady=(8, 0))
 
-        self.start_button = ttk.Button(actions, text="Iniciar limpieza", style="Primary.TButton", command=self.start_cleanup)
+        self.start_button = ttk.Button(actions, text=t("btn_start_cleanup"), style="Primary.TButton", command=self.start_cleanup)
         self.start_button.grid(row=0, column=0, padx=(0, 8))
-        ttk.Button(actions, text="Examinar carpeta", style="Secondary.TButton", command=self.select_folder).grid(
+        ttk.Button(actions, text=t("btn_browse_folder"), style="Secondary.TButton", command=self.select_folder).grid(
             row=0,
             column=1,
             padx=(0, 8),
         )
-        self.exit_button = ttk.Button(actions, text="Salir", style="Ghost.TButton", command=self.on_exit)
-        self.exit_button.grid(row=0, column=2)
+        self.exit_button = ttk.Button(actions, text=t("btn_exit"), style="Ghost.TButton", command=self.on_exit)
+        self.exit_button.grid(row=0, column=2, padx=(0, 8))
+        # Botón de donación en el hero — abre PayPal en el navegador
+        ttk.Button(
+            actions,
+            text=t("btn_donate"),
+            style="Donate.TButton",
+            command=self.open_donate_url,
+        ).grid(row=0, column=3)
         return hero
 
     def _build_settings_card(self, parent: tk.Widget) -> tk.Frame:
@@ -341,7 +386,7 @@ class MainWindow:
 
         tk.Label(
             card,
-            text="Controles",
+            text=t("section_controls"),
             bg=self.colors["surface"],
             fg=self.colors["text"],
             font=("Bahnschrift SemiBold", 16),
@@ -353,7 +398,7 @@ class MainWindow:
 
         tk.Label(
             path_box,
-            text="Destino de limpieza",
+            text=t("label_target"),
             bg=self.colors["surface_alt"],
             fg=self.colors["text"],
             font=("Segoe UI Semibold", 10),
@@ -365,7 +410,7 @@ class MainWindow:
 
         self.path_entry = ttk.Entry(row, textvariable=self.target_var, style="Surface.TEntry")
         self.path_entry.grid(row=0, column=0, sticky="ew")
-        self.browse_button = ttk.Button(row, text="Examinar", style="Secondary.TButton", command=self.select_folder)
+        self.browse_button = ttk.Button(row, text=t("btn_browse"), style="Secondary.TButton", command=self.select_folder)
         self.browse_button.grid(row=0, column=1, padx=(8, 0))
 
         tk.Label(
@@ -396,7 +441,7 @@ class MainWindow:
 
         tk.Label(
             card,
-            text="Validación de rutas críticas, guardado automático, log rotativo y password con hash.",
+            text=t("footer_note"),
             bg=self.colors["surface"],
             fg=self.colors["muted"],
             font=("Segoe UI", 9),
@@ -408,7 +453,7 @@ class MainWindow:
     def _populate_automation_box(self, card: tk.Widget) -> None:
         tk.Label(
             card,
-            text="Automatización",
+            text=t("section_automation"),
             bg=self.colors["surface_alt"],
             fg=self.colors["text"],
             font=("Segoe UI Semibold", 10),
@@ -416,7 +461,7 @@ class MainWindow:
 
         self.auto_start_check = ttk.Checkbutton(
             card,
-            text="Auto iniciar al abrir",
+            text=t("check_auto_start"),
             variable=self.auto_start_var,
             style="Surface.TCheckbutton",
             command=self._schedule_save,
@@ -425,7 +470,7 @@ class MainWindow:
 
         self.auto_close_check = ttk.Checkbutton(
             card,
-            text="Habilitar autocierre",
+            text=t("check_auto_close"),
             variable=self.auto_close_enabled_var,
             style="Surface.TCheckbutton",
             command=self._on_auto_close_toggle,
@@ -434,7 +479,7 @@ class MainWindow:
 
         tk.Label(
             card,
-            text="Segundos para autocierre",
+            text=t("label_auto_close_seconds"),
             bg=self.colors["surface_alt"],
             fg=self.colors["text"],
             font=("Segoe UI Semibold", 9),
@@ -463,7 +508,7 @@ class MainWindow:
     def _populate_security_box(self, card: tk.Widget) -> None:
         tk.Label(
             card,
-            text="Seguridad y acceso",
+            text=t("section_security"),
             bg=self.colors["surface_alt"],
             fg=self.colors["text"],
             font=("Segoe UI Semibold", 10),
@@ -471,7 +516,7 @@ class MainWindow:
 
         self.password_required_check = ttk.Checkbutton(
             card,
-            text="Requerir password para limpiar",
+            text=t("check_require_password"),
             variable=self.password_required_var,
             style="Surface.TCheckbutton",
             command=self._schedule_save,
@@ -486,7 +531,7 @@ class MainWindow:
         self.password_entry.grid(row=0, column=0, sticky="ew")
         self.show_password_btn = ttk.Button(
             entry_row,
-            text="Mostrar",
+            text=t("btn_show_password"),
             style="Ghost.TButton",
             width=10,
             command=self.toggle_password_visibility,
@@ -498,12 +543,12 @@ class MainWindow:
 
         self.save_password_btn = ttk.Button(
             button_row,
-            text="Guardar password",
+            text=t("btn_save_password"),
             style="Secondary.TButton",
             command=self.save_password_hash,
         )
         self.save_password_btn.grid(row=0, column=0, sticky="w")
-        ttk.Button(button_row, text="About", style="Ghost.TButton", command=self.show_about_dialog).grid(
+        ttk.Button(button_row, text=t("btn_about"), style="Ghost.TButton", command=self.show_about_dialog).grid(
             row=0,
             column=1,
             sticky="w",
@@ -531,7 +576,7 @@ class MainWindow:
 
         tk.Label(
             top,
-            text="Centro de actividad",
+            text=t("section_activity"),
             bg=self.colors["surface"],
             fg=self.colors["text"],
             font=("Bahnschrift SemiBold", 16),
@@ -563,25 +608,25 @@ class MainWindow:
         for column in range(4):
             metrics.grid_columnconfigure(column, weight=1)
 
-        self._build_stat_tile(metrics, "Archivos", self.files_metric_var, self.colors["accent"]).grid(
+        self._build_stat_tile(metrics, t("stat_files"), self.files_metric_var, self.colors["accent"]).grid(
             row=0,
             column=0,
             sticky="ew",
             padx=(0, 12),
         )
-        self._build_stat_tile(metrics, "Carpetas", self.dirs_metric_var, self.colors["success"]).grid(
+        self._build_stat_tile(metrics, t("stat_dirs"), self.dirs_metric_var, self.colors["success"]).grid(
             row=0,
             column=1,
             sticky="ew",
             padx=(0, 12),
         )
-        self._build_stat_tile(metrics, "Errores", self.errors_metric_var, self.colors["danger"]).grid(
+        self._build_stat_tile(metrics, t("stat_errors"), self.errors_metric_var, self.colors["danger"]).grid(
             row=0,
             column=2,
             sticky="ew",
             padx=(0, 12),
         )
-        self._build_stat_tile(metrics, "Duración", self.elapsed_metric_var, self.colors["warn"]).grid(
+        self._build_stat_tile(metrics, t("stat_duration"), self.elapsed_metric_var, self.colors["warn"]).grid(
             row=0,
             column=3,
             sticky="ew",
@@ -642,8 +687,13 @@ class MainWindow:
         self._save_job = self.root.after(180, self._persist_config)
 
     def _persist_config(self) -> None:
+        """Escribe el estado actual de la UI en config.json de forma atómica."""
         self._save_job = None
-        geometry = self.root.winfo_geometry()
+        try:
+            # winfo_geometry puede fallar si la ventana está siendo destruida
+            geometry = self.root.winfo_geometry()
+        except tk.TclError:
+            geometry = self.config.window_geometry  # Usa el último valor conocido
         self.config = self.config_manager.update(
             target_path=self.target_var.get().strip(),
             auto_start=self.auto_start_var.get(),
@@ -651,6 +701,7 @@ class MainWindow:
             auto_close_seconds=self._safe_seconds(),
             window_geometry=geometry,
             password_required=self.password_required_var.get(),
+            language=get_language(),  # Persiste el idioma activo
         )
         self._refresh_security_summary()
 
@@ -700,20 +751,20 @@ class MainWindow:
             return
 
         if self._is_running:
-            self._refresh_status_text(extra="Autocierre pausado durante limpieza.")
-            self._refresh_auto_close_summary("Autocierre pausado mientras hay trabajo en curso.")
+            self._refresh_status_text(extra=t("autoclose_paused_extra"))
+            self._refresh_auto_close_summary(t("autoclose_paused_running"))
             self._countdown_job = self.root.after(1000, self._tick_countdown)
             return
 
         if self._countdown_remaining <= 0:
-            self._set_status("Autocierre ejecutado.")
-            self.logger.info("Autocierre ejecutado.")
+            self._set_status(t("autoclose_executed"))
+            self.logger.info(t("autoclose_executed"))
             self.root.after(200, self.root.destroy)
             return
 
-        self._refresh_status_text(extra=f"Autocierre en {self._countdown_remaining}s")
+        self._refresh_status_text(extra=t("autoclose_countdown_short", sec=self._countdown_remaining))
         self._refresh_auto_close_summary(
-            f"La aplicación se cerrará sola en {self._countdown_remaining}s si permanece inactiva."
+            t("autoclose_countdown", sec=self._countdown_remaining)
         )
         self._countdown_remaining -= 1
         self._countdown_job = self.root.after(1000, self._tick_countdown)
@@ -721,12 +772,12 @@ class MainWindow:
     def _refresh_target_summary(self) -> None:
         target = self.target_var.get().strip()
         if not target:
-            self.path_summary_var.set("No hay carpeta seleccionada todavía.")
+            self.path_summary_var.set(t("no_folder_selected"))
             return
 
         path = Path(target)
         name = path.name or str(path)
-        self.path_summary_var.set(f"Destino listo: {name} | Ruta completa: {path}")
+        self.path_summary_var.set(t("target_ready", name=name, path=path))
 
     def _refresh_auto_close_summary(self, text: str | None = None) -> None:
         if text:
@@ -734,29 +785,29 @@ class MainWindow:
             return
 
         if not self.auto_close_enabled_var.get():
-            self.auto_close_summary_var.set("Autocierre desactivado. La ventana seguirá abierta hasta salir manualmente.")
+            self.auto_close_summary_var.set(t("autoclose_disabled"))
             return
 
         seconds = self._safe_seconds()
-        self.auto_close_summary_var.set(f"Autocierre activo. Tiempo configurado: {seconds}s.")
+        self.auto_close_summary_var.set(t("autoclose_active", sec=seconds))
 
     def _refresh_security_summary(self) -> None:
         cfg = self.config_manager.get()
         if not self.password_required_var.get():
-            self.security_summary_var.set("Protección opcional desactivada. Puedes iniciar la limpieza directamente.")
+            self.security_summary_var.set(t("security_inactive"))
             return
 
         if cfg.password_hash and cfg.password_salt:
-            self.security_summary_var.set("Protección activa. Escribe la clave actual y luego ejecuta la limpieza.")
+            self.security_summary_var.set(t("security_active_with_hash"))
             return
 
-        self.security_summary_var.set("Protección activa, pero todavía no hay password guardado.")
+        self.security_summary_var.set(t("security_active_no_hash"))
 
     def _set_running_metrics(self) -> None:
         self.files_metric_var.set("...")
         self.dirs_metric_var.set("...")
         self.errors_metric_var.set("...")
-        self.elapsed_metric_var.set("En curso")
+        self.elapsed_metric_var.set(t("in_progress"))
 
     def _refresh_result_metrics(self, result: CleanResult | None = None) -> None:
         if result is None:
@@ -772,33 +823,33 @@ class MainWindow:
         self.elapsed_metric_var.set(f"{result.elapsed_seconds:.2f} s")
 
     def select_folder(self) -> None:
-        selected = filedialog.askdirectory(title="Selecciona carpeta para limpiar")
+        selected = filedialog.askdirectory(title=t("label_target"))
         if not selected:
             return
         self.target_var.set(str(Path(selected)))
-        self._set_status(f"Carpeta seleccionada: {selected}")
+        self._set_status(t("folder_selected", path=selected))
 
     def toggle_password_visibility(self) -> None:
         self._show_password = not self._show_password
         self.password_entry.configure(show="" if self._show_password else "*")
-        self.show_password_btn.configure(text="Ocultar" if self._show_password else "Mostrar")
+        self.show_password_btn.configure(text=t("btn_hide_password") if self._show_password else t("btn_show_password"))
 
     def save_password_hash(self) -> None:
         plain = self.password_var.get()
         if len(plain) < 4:
-            self._set_status("El password debe tener al menos 4 caracteres.")
+            self._set_status(t("password_too_short"))
             return
 
         hashed, salt = hash_password(plain)
         self.config = self.config_manager.update(password_hash=hashed, password_salt=salt)
         self.password_var.set("")
         self._refresh_security_summary()
-        self._set_status("Password guardado de forma segura.")
-        self.logger.info("Password de protección actualizado.")
+        self._set_status(t("password_saved"))
+        self.logger.info(t("password_updated"))
 
     def start_cleanup(self) -> None:
         if self._is_running:
-            self._set_status("La limpieza ya está en ejecución.")
+            self._set_status(t("already_running"))
             return
 
         target = self.target_var.get().strip()
@@ -810,19 +861,19 @@ class MainWindow:
         cfg = self.config_manager.get()
         if self.password_required_var.get():
             if not cfg.password_hash or not cfg.password_salt:
-                self._set_status("Activa protección por password, pero no hay password guardado.")
+                self._set_status(t("password_required_no_hash"))
                 return
             if not verify_password(self.password_var.get(), cfg.password_hash, cfg.password_salt):
-                self._set_status("Password inválido.")
+                self._set_status(t("password_invalid"))
                 return
 
         self._is_running = True
         self.start_button.state(["disabled"])
         self.progress.start(10)
         self._set_running_metrics()
-        self._set_status("Limpieza iniciada en segundo plano...")
-        self.logger.info("Limpieza iniciada. Ruta objetivo: %s", target)
-        self._refresh_auto_close_summary("Autocierre pausado mientras se completa la limpieza.")
+        self._set_status(t("cleanup_started"))
+        self.logger.info(t("cleanup_started_log"), target)
+        self._refresh_auto_close_summary(t("autoclose_paused_cleanup"))
 
         self._worker_thread = threading.Thread(
             target=self._worker_clean,
@@ -863,6 +914,7 @@ class MainWindow:
 
             if event_type == "error":
                 self._finish_cleanup(result=None, error=str(item.get("error", "Error desconocido")))
+                continue  # Consistencia: siempre continue al final de cada rama
 
         self._queue_job = self.root.after(120, self._process_queue)
 
@@ -873,13 +925,15 @@ class MainWindow:
 
         if error:
             self._refresh_result_metrics()
-            self._set_status(f"Error: {error}")
-            self.logger.error("Fallo de limpieza: %s", error)
+            self._set_status(t("error_prefix", msg=error))
+            self.logger.error(t("cleanup_failed_log"), error)
         elif result:
             self._refresh_result_metrics(result)
-            summary = (
-                f"Finalizado: {result.files_deleted} archivos, "
-                f"{result.dirs_deleted} carpetas, {result.errors} errores."
+            summary = t(
+                "cleanup_result",
+                files=result.files_deleted,
+                dirs=result.dirs_deleted,
+                errors=result.errors,
             )
             self._set_status(summary)
             self.logger.info(summary)
@@ -888,8 +942,16 @@ class MainWindow:
         self._sync_countdown_state(force_reset=True)
 
     def show_about_dialog(self) -> None:
+        """Muestra el diálogo de información de la app con botón de donación PayPal."""
+        # Guarda ante la posibilidad de que la ventana esté siendo destruida
+        try:
+            if not self.root.winfo_exists():
+                return
+        except tk.TclError:
+            return
+
         about_win = tk.Toplevel(self.root, bg=self.colors["bg"])
-        about_win.title("About")
+        about_win.title(t("about_title"))
         about_win.transient(self.root)
         about_win.resizable(False, False)
         about_win.grab_set()
@@ -904,23 +966,63 @@ class MainWindow:
         frame.pack(fill="both", expand=True, padx=18, pady=18)
 
         year = dt.datetime.now().year
-        text = (
-            f"{APP_NAME} v{VERSION}\n\n"
-            "Herramienta de escritorio para vaciar el contenido de una carpeta con validaciones "
-            "de seguridad, log local y automatización opcional.\n\n"
-            f"Autor: Synyster Rick\nLicencia: Apache License 2.0\nCopyright {year}"
-        )
 
+        # Nombre y versión de la aplicación
         tk.Label(
             frame,
-            text=text,
+            text=f"{APP_NAME} v{VERSION}",
+            bg=self.colors["surface"],
+            fg=self.colors["accent"],
+            font=("Bahnschrift SemiBold", 16),
+            justify="center",
+        ).pack(padx=22, pady=(22, 6))
+
+        # Descripción traducible
+        tk.Label(
+            frame,
+            text=t("about_description"),
             bg=self.colors["surface"],
             fg=self.colors["text"],
             font=("Segoe UI", 10),
             wraplength=420,
             justify="center",
-        ).pack(padx=22, pady=(22, 16))
-        ttk.Button(frame, text="Cerrar", style="Primary.TButton", command=about_win.destroy).pack(pady=(0, 22))
+        ).pack(padx=22, pady=(0, 8))
+
+        # Autor, licencia y copyright
+        tk.Label(
+            frame,
+            text=f"{t('about_author')} · {t('about_license')} · {t('about_copyright', year=year)}",
+            bg=self.colors["surface"],
+            fg=self.colors["muted"],
+            font=("Segoe UI", 9),
+            justify="center",
+        ).pack(padx=22, pady=(0, 16))
+
+        # Separador visual antes de la sección de donación
+        tk.Frame(frame, bg=self.colors["border"], height=1).pack(fill="x", padx=22, pady=(0, 16))
+
+        # Invitación a donar
+        tk.Label(
+            frame,
+            text=t("about_donate_label"),
+            bg=self.colors["surface"],
+            fg=self.colors["text"],
+            font=("Segoe UI Semibold", 10),
+            justify="center",
+        ).pack(padx=22, pady=(0, 10))
+
+        # Botón de donación — abre la URL de PayPal en el navegador predeterminado
+        ttk.Button(
+            frame,
+            text=t("btn_donate"),
+            style="Donate.TButton",
+            command=self.open_donate_url,
+        ).pack(pady=(0, 12))
+
+        # Botón para cerrar el diálogo
+        ttk.Button(
+            frame, text=t("btn_close"), style="Primary.TButton", command=about_win.destroy
+        ).pack(pady=(0, 22))
 
     def _set_status(self, text: str) -> None:
         self._base_status = text
@@ -935,43 +1037,79 @@ class MainWindow:
         self.status_var.set(display)
 
     def _append_activity(self, text: str) -> None:
+        """Agrega una línea con timestamp a la bitácora y limita a 200 líneas."""
         if not hasattr(self, "activity_text"):
             return
 
         timestamp = dt.datetime.now().strftime("%H:%M:%S")
-        self.activity_text.configure(state="normal")
-        self.activity_text.insert("end", f"[{timestamp}] ", ("time",))
-        self.activity_text.insert("end", f"{text}\n", ("message",))
+        try:
+            self.activity_text.configure(state="normal")
+            self.activity_text.insert("end", f"[{timestamp}] ", ("time",))
+            self.activity_text.insert("end", f"{text}\n", ("message",))
 
-        line_count = int(self.activity_text.index("end-1c").split(".")[0])
-        if line_count > 240:
-            self.activity_text.delete("1.0", "40.0")
+            # Limita la bitácora a 200 líneas para evitar consumo excesivo de memoria
+            line_count = int(self.activity_text.index("end-1c").split(".")[0])
+            if line_count > 200:
+                self.activity_text.delete("1.0", f"{line_count - 200}.0")
 
-        self.activity_text.see("end")
-        self.activity_text.configure(state="disabled")
+            self.activity_text.see("end")
+        except (tk.TclError, ValueError):
+            pass  # El widget puede estar en proceso de destrucción
+        finally:
+            try:
+                self.activity_text.configure(state="disabled")
+            except tk.TclError:
+                pass
 
     def on_exit(self) -> None:
+        """Maneja el cierre seguro: bloquea si hay limpieza activa, guarda config y destruye."""
         if self._is_running:
-            self._set_status("Espera a que termine la limpieza antes de salir.")
+            self._set_status(t("exit_blocked"))
             return
 
-        if self._countdown_job:
-            self.root.after_cancel(self._countdown_job)
-            self._countdown_job = None
-        if self._configure_job:
-            self.root.after_cancel(self._configure_job)
-            self._configure_job = None
-        if self._save_job:
-            self.root.after_cancel(self._save_job)
-            self._save_job = None
-        if self._queue_job:
-            self.root.after_cancel(self._queue_job)
-            self._queue_job = None
-
+        self._cancel_pending_jobs()
         self._persist_config()
-        self.logger.info("Aplicación cerrada.")
+        self.logger.info(t("app_closed"))
+        self.root.destroy()
+
+    def _cancel_pending_jobs(self) -> None:
+        """Cancela todos los after() pendientes de forma segura antes de destruir la ventana."""
+        for attr in ("_countdown_job", "_configure_job", "_save_job", "_queue_job"):
+            job = getattr(self, attr, None)
+            if job:
+                try:
+                    self.root.after_cancel(job)
+                except tk.TclError:
+                    pass
+                setattr(self, attr, None)
+
+    def open_donate_url(self) -> None:
+        """Abre el enlace de donaciones (PayPal) en el navegador predeterminado del sistema."""
+        try:
+            webbrowser.open_new_tab(DONATE_URL)
+        except (webbrowser.Error, OSError):
+            pass  # Sin navegador disponible; se ignora silenciosamente
+
+    def _change_language(self, lang: str) -> None:
+        """Cambia el idioma activo, guarda la preferencia y reinicia la ventana."""
+        if lang == get_language():
+            return  # Ya está en el idioma seleccionado; no hace nada
+
+        set_language(lang)
+        self.config_manager.update(language=lang)  # Persiste antes de destruir
+        self.restart_requested = True
+        self._cancel_pending_jobs()
         self.root.destroy()
 
 
 def run() -> None:
-    MainWindow().run()
+    """Punto de entrada principal.
+
+    Ejecuta MainWindow en un bucle para soportar el reinicio automático
+    cuando el usuario cambia de idioma desde el menú.
+    """
+    while True:
+        app = MainWindow()
+        app.run()
+        if not app.restart_requested:
+            break
